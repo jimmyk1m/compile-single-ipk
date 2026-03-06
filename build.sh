@@ -11,9 +11,7 @@ echo PASSWORD: "$PASSWORD"
 WORKDIR="$(pwd)"
 
 sudo -E apt-get update
-
-# 【修改点】增加 python3-pyelftools，修复 uboot prereq 失败的问题
-# 同时保留 python3-dev, swig, zstd 等必要依赖
+# 修复依赖：增加 python3-pyelftools, swig
 sudo -E apt-get install -y \
 git asciidoc bash bc binutils bzip2 fastjar flex gawk gcc genisoimage gettext \
 git intltool jikespg libgtk2.0-dev libncurses5-dev libssl-dev make mercurial \
@@ -24,10 +22,21 @@ git config --global user.email "${EMAIL}"
 git config --global user.name "aa"
 [ -n "${PASSWORD}" ] && git config --global user.password "${PASSWORD}"
 
-# 下载插件源码
+# 下载源码并修复 Makefile
 mkdir -p ${WORKDIR}/buildsource
 cd ${WORKDIR}/buildsource
 git clone "$SOURCECODEURL"
+
+# 【关键修复】注入 Build/Compile 规则
+if [ -f "${PKGNAME}/Makefile" ]; then
+    if ! grep -q "define Build/Compile" "${PKGNAME}/Makefile"; then
+        echo "Fixing Makefile: Adding empty Build/Compile definition..."
+        echo "" >> "${PKGNAME}/Makefile"
+        echo "define Build/Compile" >> "${PKGNAME}/Makefile"
+        echo "endef" >> "${PKGNAME}/Makefile"
+    fi
+fi
+
 cd ${WORKDIR}
 
 # SDK 下载函数
@@ -42,13 +51,11 @@ x86_sdk_get()
 rockchip_sdk_get()
 {
     echo "Downloading Rockchip SDK..."
-    # 注意：OpenWrt 官方 Rockchip SDK 版本号需核对，这里假设使用 23.05.5
-    wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+    wget -q -O openwrt-sdk.tar.zst wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
     mkdir -p ${WORKDIR}/openwrt-sdk
     tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
 }
 
-# 其他架构占位
 mips_siflower_sdk_get() { echo "TODO: Implement mips_siflower_sdk_get"; exit 1; }
 axt1800_sdk_get() { echo "TODO: Implement axt1800_sdk_get"; exit 1; }
 
@@ -66,19 +73,13 @@ esac
 
 cd openwrt-sdk
 
-# 注入源码
+# 链接源码
 sed -i "1i\src-link githubaction ${WORKDIR}/buildsource" feeds.conf.default
-
-ls -l
-cat feeds.conf.default
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# 【优化】配置部分
-# SDK 通常不需要重新选 Target，因为已经预编译了内核。
-# 强制写入配置可能会导致不必要的重编译或冲突。
-# 如果你必须生成 .config，请确保架构匹配。
+# 配置 (仅 X86 需要写入，SDK 默认配置通常已就绪)
 if [ "$BOARD" = "X86" ] || [ "$BOARD" = "" ]; then
     cat >> .config <<EOF
 CONFIG_TARGET_x86=y
@@ -86,15 +87,10 @@ CONFIG_TARGET_x86_64=y
 CONFIG_TARGET_x86_64_Generic=y
 EOF
 fi
-# 如果是 Rockchip，SDK 自带的 .config 应该已经正确，无需手动干预
 
 make defconfig
 
-# 输出配置检查
-cat .config
-
-# 开始编译
+# 编译
 make package/feeds/githubaction/${PKGNAME}/compile V=s
 
-find bin -type f -exec ls -lh {} \;
 find bin -type f -name "*.ipk" -exec cp -f {} "${WORKDIR}" \;
