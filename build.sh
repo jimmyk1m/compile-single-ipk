@@ -43,7 +43,7 @@ rockchip_sdk_get()
 {
     echo "Downloading Rockchip SDK..."
     # 注意：OpenWrt 官方 Rockchip SDK 版本号需核对，这里假设使用 23.05.5
-    wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/23.05.5/targets/rockchip/armv8/openwrt-sdk-23.05.5-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.zst
+    wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
     mkdir -p ${WORKDIR}/openwrt-sdk
     tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
 }
