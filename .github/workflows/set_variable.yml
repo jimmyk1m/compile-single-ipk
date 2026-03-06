@@ -7,9 +7,7 @@ on:
         type: choice
         options:
         - X86
-        - AXT1800
-        - SF1200
-        - SFT1200
+        - rockchip
       sourcecode:
         description: 'Source code URL'     
         required: true
