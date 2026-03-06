@@ -51,7 +51,9 @@ x86_sdk_get()
 rockchip_sdk_get()
 {
     echo "Downloading Rockchip SDK..."
-    wget -q -O openwrt-sdk.tar.zst wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+    SDK_URL="https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+    wget -4 --tries=10 -O openwrt-sdk.tar.zst "$SDK_URL"
+    
     mkdir -p ${WORKDIR}/openwrt-sdk
     tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
 }
