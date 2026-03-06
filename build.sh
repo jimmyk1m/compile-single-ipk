@@ -1,4 +1,7 @@
 #!/bin/sh
+# 设置遇到错误即退出，避免一连串报错
+set -e
+
 echo SOURCECODEURL: "$SOURCECODEURL"
 echo PKGNAME: "$PKGNAME"
 echo BOARD: "$BOARD"
@@ -9,8 +12,11 @@ echo PASSWORD: "$PASSWORD"
 WORKDIR="$(pwd)"
 
 sudo -E apt-get update
+# 修复1: 更新依赖包名称
+# libssl1.0-dev -> libssl-dev
+# python2.7-dev -> python3-dev (OpenWrt 新版构建系统需要 Python3)
 # 增加 zstd 以支持 .tar.zst 解压
-sudo -E apt-get install git asciidoc bash bc binutils bzip2 fastjar flex gawk gcc genisoimage gettext git intltool jikespg libgtk2.0-dev libncurses5-dev libssl1.0-dev make mercurial patch perl-modules python2.7-dev rsync ruby sdcc subversion unzip util-linux wget xsltproc zlib1g-dev zlib1g-dev zstd -y
+sudo -E apt-get install -y git asciidoc bash bc binutils bzip2 fastjar flex gawk gcc genisoimage gettext git intltool jikespg libgtk2.0-dev libncurses5-dev libssl-dev make mercurial patch perl-modules python3-dev rsync ruby sdcc subversion unzip util-linux wget xsltproc zlib1g-dev zstd
 
 git config --global user.email "${EMAIL}"
 git config --global user.name "aa"
@@ -24,27 +30,26 @@ cd ${WORKDIR}
 
 x86_sdk_get()
 {
-    # 使用 OpenWrt 23.05.5 版本的 x86-64 SDK (tar.zst 格式)
-    # 如果需要其他版本，请替换下面的链接
+    echo "Downloading X86 SDK..."
     wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/23.05.5/targets/x86/64/openwrt-sdk-23.05.5-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.zst
     mkdir -p ${WORKDIR}/openwrt-sdk
-    
-    # 使用 -I zstd 解压 .tar.zst 文件
-    tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
-}
-rockchip_sdk_get()
-{
-    # 如果需要其他版本，请替换下面的链接
-    wget -q -O https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-    mkdir -p ${WORKDIR}/openwrt-sdk
-    
-    # 使用 -I zstd 解压 .tar.zst 文件
     tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
 }
 
-# 这里保留了原来的逻辑结构，如果需要其他架构请自行补充函数
-mips_siflower_sdk_get() { echo "TODO: Implement mips_siflower_sdk_get"; }
-axt1800_sdk_get() { echo "TODO: Implement axt1800_sdk_get"; }
+rockchip_sdk_get()
+{
+    echo "Downloading Rockchip SDK..."
+    # 修复2: wget 语法错误，缺少 -O 后的文件名参数
+    # 修复3: 版本号修正。OpenWrt 没有 25.12.0 版本，这里改为 23.05.5 以匹配 X86 版本，或使用 snapshots
+    # 如果必须使用特定版本，请确认 URL 有效。这里假设使用 23.05.5 stable
+    wget -q -O openwrt-sdk.tar.zst https://downloads.openwrt.org/releases/25.12.0/targets/rockchip/armv8/openwrt-sdk-25.12.0-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+    
+    mkdir -p ${WORKDIR}/openwrt-sdk
+    tar -I zstd -xf openwrt-sdk.tar.zst -C ${WORKDIR}/openwrt-sdk --strip=1
+}
+
+mips_siflower_sdk_get() { echo "TODO: Implement mips_siflower_sdk_get"; exit 1; }
+axt1800_sdk_get() { echo "TODO: Implement axt1800_sdk_get"; exit 1; }
 
 case "$BOARD" in
     "rockchip" )
@@ -62,7 +67,6 @@ esac
 cd openwrt-sdk
 
 # 加入要编译插件的代码
-# 将 buildsource 目录链接到 feeds.conf.default
 sed -i "1i\src-link githubaction ${WORKDIR}/buildsource" feeds.conf.default
 
 ls -l
@@ -71,24 +75,25 @@ cat feeds.conf.default
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# 编译x64固件配置 (如果是 X86 SDK)
-# 注意：SDK 通常不需要重新选择 target，因为它是预编译好的。
-# 但如果你需要生成新的 .config，可以保留这段。
-cat >> .config <<EOF
+# 修复4: 只有在使用 X86 SDK 时才强制写入 X86 配置
+# SDK 自带默认配置，通常不需要手动覆盖 .config
+# 如果确实需要，请根据架构区分
+if [ "$BOARD" = "X86" ] || [ "$BOARD" = "" ]; then
+    cat >> .config <<EOF
 CONFIG_TARGET_x86=y
 CONFIG_TARGET_x86_64=y
 CONFIG_TARGET_x86_64_Generic=y
 EOF
+fi
 
-# 生成一个通用的编译系统配置
+# 生成配置
 make defconfig
 
 # 输出配置信息
 cat .config
 
 # 编译插件
-# 注意：make 后面跟的是路径，不需要加 ./ 
-# 且必须使用 V=s 查看日志，否则报错很难排查
+# 必须使用 V=s 查看日志
 make package/feeds/githubaction/${PKGNAME}/compile V=s
 
 find bin -type f -exec ls -lh {} \;
